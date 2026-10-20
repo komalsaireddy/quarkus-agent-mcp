@@ -1100,20 +1100,27 @@ public class SkillReader {
     static Path writeSkill(String skillName, String content, String description, List<String> categories,
             SkillMode mode, String projectDir, Path localSkillsDir, boolean projectScope, boolean createOnly)
             throws IOException {
-        if (skillName == null || !VALID_SKILL_NAME.matcher(skillName).matches()) {
+        if (skillName == null || !VALID_SKILL_NAME.matcher(skillName).matches()
+                || skillName.equals(".") || skillName.equals("..")) {
             throw new IllegalArgumentException("Invalid skill name: " + skillName
-                    + ". Must contain only letters, digits, dots, hyphens, and underscores.");
+                    + ". Must contain only letters, digits, dots, hyphens, and underscores, and cannot be . or ..");
         }
 
         Path baseDir;
         if (projectScope) {
-            baseDir = Path.of(projectDir, ".agent", "skills");
+            Path projectPath = Path.of(projectDir);
+            Files.createDirectories(projectPath);
+            Path projectRoot = projectPath.toRealPath();
+            Path agentDir = createSkillDirectory(projectRoot.resolve(".agent"));
+            baseDir = createSkillDirectory(agentDir.resolve("skills"));
         } else {
             baseDir = localSkillsDir != null ? localSkillsDir : defaultLocalSkillsDir();
+            Files.createDirectories(baseDir);
+            // An explicitly selected root may itself be an alias.
+            baseDir = baseDir.toRealPath();
         }
 
-        Path skillDir = baseDir.resolve(skillName);
-        Files.createDirectories(skillDir);
+        Path skillDir = createSkillDirectory(baseDir.resolve(skillName));
 
         StringBuilder sb = new StringBuilder();
         sb.append("---\n");
@@ -1133,12 +1140,27 @@ public class SkillReader {
         Path skillFile = skillDir.resolve(SKILL_FILE_NAME);
         if (createOnly) {
             Files.writeString(skillFile, sb.toString(), StandardCharsets.UTF_8,
-                    StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE);
+                    StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE, LinkOption.NOFOLLOW_LINKS);
         } else {
-            Files.writeString(skillFile, sb.toString(), StandardCharsets.UTF_8);
+            Files.writeString(skillFile, sb.toString(), StandardCharsets.UTF_8,
+                    StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING,
+                    StandardOpenOption.WRITE, LinkOption.NOFOLLOW_LINKS);
         }
         LOG.infof("Wrote skill '%s' to %s", skillName, skillFile);
         return skillFile;
+    }
+
+    private static Path createSkillDirectory(Path directory) throws IOException {
+        try {
+            Files.createDirectory(directory);
+        } catch (FileAlreadyExistsException ignored) {
+            // Validate existing directories before creating any descendants.
+        }
+        if (!Files.isDirectory(directory, LinkOption.NOFOLLOW_LINKS)
+                || !directory.toRealPath().equals(directory)) {
+            throw new IOException("Skill directory must not be redirected by a symbolic link or junction: " + directory);
+        }
+        return directory;
     }
 
     /**
