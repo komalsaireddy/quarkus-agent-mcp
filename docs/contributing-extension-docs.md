@@ -85,7 +85,7 @@ Loading is incremental — when you add an extension to a project, the MCP serve
 After building with `-Prag`, verify the SQL was generated:
 
 ```bash
-jar tf your-extension-deployment/target/your-extension-deployment-*.jar | grep quarkus-rag
+jar tf your-extension-deployment/target/your-extension-deployment-*.jar | grep 'META-INF/quarkus-rag.sql'
 ```
 
 You should see `META-INF/quarkus-rag.sql`. You can inspect it — it contains `DELETE` and `INSERT` statements with vector embeddings.
